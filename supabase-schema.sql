@@ -50,6 +50,7 @@ CREATE TABLE upload_batches (
   valid_count INT NOT NULL DEFAULT 0,
   duplicate_count INT NOT NULL DEFAULT 0,
   error_count INT NOT NULL DEFAULT 0,
+  file_path TEXT,
   uploaded_at TIMESTAMPTZ DEFAULT NOW()
 );
 

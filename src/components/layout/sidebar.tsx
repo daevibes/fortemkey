@@ -13,12 +13,14 @@ import {
   Settings,
   BookOpen,
   LogOut,
+  History,
 } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/", label: "대시보드", icon: LayoutDashboard },
   { href: "/catalog", label: "카탈로그", icon: BookOpen },
   { href: "/upload", label: "코드 업로드", icon: Upload },
+  { href: "/batches", label: "업로드 이력", icon: History },
   { href: "/codes", label: "코드 관리", icon: Code2 },
   { href: "/inventory", label: "재고 현황", icon: Package },
   { href: "/settings", label: "설정", icon: Settings },

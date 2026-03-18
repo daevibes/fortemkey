@@ -54,6 +54,7 @@ export interface UploadBatch {
   valid_count: number;
   duplicate_count: number;
   error_count: number;
+  file_path?: string;
   uploaded_at: string;
 }
 

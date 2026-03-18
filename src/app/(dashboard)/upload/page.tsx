@@ -33,6 +33,7 @@ function UploadPageContent() {
   const [selectedAdmin, setSelectedAdmin] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [noExpiry, setNoExpiry] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState("");
   const [parsedGroups, setParsedGroups] = useState<ParsedItemGroup[]>([]);
   const [parseError, setParseError] = useState("");
@@ -100,6 +101,7 @@ function UploadPageContent() {
   };
 
   const handleFile = useCallback((file: File) => {
+    setCsvFile(file);
     setFileName(file.name);
     setParseError("");
     setResult(null);
@@ -255,17 +257,24 @@ function UploadPageContent() {
         existingItemId: g.existingItemId,
       }));
 
+      const jsonData = JSON.stringify({
+        groups: uploadGroups,
+        collectionId: Number(selectedCollection),
+        gameId: Number(selectedGame),
+        adminId: Number(selectedAdmin),
+        fileName,
+        expiresAt: noExpiry ? null : (expiresAt || null),
+      });
+
+      const formData = new FormData();
+      formData.append("data", jsonData);
+      if (csvFile) {
+        formData.append("file", csvFile);
+      }
+
       const res = await fetch("/api/upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          groups: uploadGroups,
-          collectionId: Number(selectedCollection),
-          gameId: Number(selectedGame),
-          adminId: Number(selectedAdmin),
-          fileName,
-          expiresAt: noExpiry ? null : (expiresAt || null),
-        }),
+        body: formData,
       });
       const data = await res.json();
       setResult(data);

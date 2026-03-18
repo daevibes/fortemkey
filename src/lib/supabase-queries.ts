@@ -214,6 +214,13 @@ export async function getBatches(): Promise<UploadBatch[]> {
   return data as UploadBatch[];
 }
 
+export async function getBatch(id: number): Promise<UploadBatch | undefined> {
+  if (!isConnected()) return getStore().getBatches().find((b) => b.id === id);
+  const { data, error } = await supabase!.from("upload_batches").select("*").eq("id", id).single();
+  if (error) return undefined;
+  return data as UploadBatch;
+}
+
 // ─── Codes ───
 
 export async function getCodes(filters?: {
@@ -324,9 +331,10 @@ export async function addCodesMultiItem(
   gameId: number,
   adminId: number,
   fileName: string,
-  expiresAt: string | null
+  expiresAt: string | null,
+  filePath?: string
 ): Promise<MultiItemUploadResult> {
-  if (!isConnected()) return getStore().addCodesMultiItem(groups, collectionId, gameId, adminId, fileName, expiresAt);
+  if (!isConnected()) return getStore().addCodesMultiItem(groups, collectionId, gameId, adminId, fileName, expiresAt, filePath);
 
   // Get all existing code values for dedup
   const { data: existingCodesData } = await supabase!.from("codes").select("code");
@@ -387,6 +395,7 @@ export async function addCodesMultiItem(
       valid_count: validCodes.length,
       duplicate_count: duplicateCodes.length,
       error_count: errorCodes.length,
+      ...(filePath ? { file_path: filePath } : {}),
     }).select().single();
     if (batchErr) throw new Error(batchErr.message);
     const batchData = batch as UploadBatch;

@@ -82,25 +82,34 @@ function CodesPageContent() {
       const colId = searchParams.get("collection_id") || "";
       const itemId = searchParams.get("item_id") || "";
       let gameId = "";
+      let resolvedColId = colId;
 
-      if (colId) {
+      if (itemId && !colId) {
+        // Resolve collection and game from item_id
+        const item = it.find((i: Item) => i.id === Number(itemId));
+        if (item) {
+          resolvedColId = String(item.collection_id);
+          const c = col.find((c: Collection) => c.id === item.collection_id);
+          if (c) gameId = String(c.game_id);
+        }
+      } else if (colId) {
         const c = col.find((c: Collection) => c.id === Number(colId));
         if (c) gameId = String(c.game_id);
       }
 
       // Set pending state
       setGameFilter(gameId);
-      setCollectionFilter(colId);
+      setCollectionFilter(resolvedColId);
       setItemFilter(itemId);
       setCollections(gameId ? col.filter((c: Collection) => c.game_id === Number(gameId)) : col);
-      if (colId) {
-        setFilteredItems(it.filter((i: Item) => i.collection_id === Number(colId)));
+      if (resolvedColId) {
+        setFilteredItems(it.filter((i: Item) => i.collection_id === Number(resolvedColId)));
       }
 
       // Set applied state (triggers fetch)
       setAppliedFilters({
         gameFilter: gameId,
-        collectionFilter: colId,
+        collectionFilter: resolvedColId,
         itemFilter: itemId,
         statusFilter: "",
         adminFilter: "",

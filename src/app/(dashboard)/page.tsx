@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatNumber, formatDateTime } from "@/lib/utils";
+import Link from "next/link";
 import { Package, AlertTriangle, Upload, Code2, Clock, RefreshCw, CheckCircle2, XCircle } from "lucide-react";
 import type { UploadBatch, Game, Admin, Collection, InventoryMetrics, InventorySummary, ExpiryAlert, SyncLog } from "@/lib/types";
 import { SYNC_STATUS_COLORS, SYNC_STATUS_LABELS } from "@/lib/types";
@@ -263,8 +264,14 @@ export default function DashboardPage() {
 
       {/* Recent Uploads */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>최근 업로드</CardTitle>
+          <Link
+            href="/batches"
+            className="text-sm font-medium text-neutral-400 hover:text-neutral-200 transition-colors"
+          >
+            더보기 &rarr;
+          </Link>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">

@@ -314,7 +314,8 @@ class Store {
     gameId: number,
     adminId: number,
     fileName: string,
-    expiresAt: string | null
+    expiresAt: string | null,
+    filePath?: string
   ): MultiItemUploadResult {
     const allBatches: UploadBatch[] = [];
     const itemResults: MultiItemUploadResult["itemResults"] = [];
@@ -378,6 +379,7 @@ class Store {
         valid_count: validCodes.length,
         duplicate_count: duplicateCodes.length,
         error_count: errorCodes.length,
+        ...(filePath ? { file_path: filePath } : {}),
         uploaded_at: new Date().toISOString(),
       };
       this.batches.push(batch);

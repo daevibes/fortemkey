@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatNumber, formatDate } from "@/lib/utils";
-import { AlertTriangle, DollarSign, Package, ShoppingCart, TrendingUp, BarChart3, ChevronRight, ChevronDown, Layers } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, DollarSign, Package, ShoppingCart, TrendingUp, BarChart3, ChevronRight, ChevronDown, Layers, ExternalLink } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -500,6 +501,14 @@ function CollectionCard({ col, expanded, onToggle }: { col: CollectionMetrics; e
                         </Badge>
                       )}
                       {isLow && <AlertTriangle className="h-4 w-4 text-orange-500" />}
+                      <Link
+                        href={`/codes?item_id=${row.item.id}`}
+                        className="rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-700 hover:text-blue-400"
+                        title="코드 관리"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Link>
                     </div>
                   </div>
 
