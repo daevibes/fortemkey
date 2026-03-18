@@ -495,7 +495,7 @@ class Store {
           itemResults.push({
             game, collection, item,
             total: itemCodes.length, received, registered, sold,
-            revenue, salesRate: rate(sold, itemCodes.length),
+            revenue, salesRate: rate(sold, registered + sold),
             earliestExpiry, expiryDaysLeft,
           });
         }
@@ -505,7 +505,7 @@ class Store {
         collectionResults.push({
           collection,
           totalCodes: cTotal, received: cReceived, registered: cRegistered, sold: cSold,
-          revenue: cRevenue, salesRate: rate(cSold, cTotal),
+          revenue: cRevenue, salesRate: rate(cSold, cRegistered + cSold),
           items: itemResults,
         });
       }
@@ -515,7 +515,7 @@ class Store {
       gameResults.push({
         game,
         totalCodes: gTotal, received: gReceived, registered: gRegistered, sold: gSold,
-        revenue: gRevenue, salesRate: rate(gSold, gTotal),
+        revenue: gRevenue, salesRate: rate(gSold, gRegistered + gSold),
         collections: collectionResults,
       });
     }

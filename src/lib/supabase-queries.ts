@@ -513,7 +513,7 @@ export async function getInventoryMetrics(dateFrom?: string, dateTo?: string, ga
         itemResults.push({
           game, collection, item,
           total: itemCodes.length, received, registered, sold,
-          revenue, salesRate: rate(sold, itemCodes.length),
+          revenue, salesRate: rate(sold, registered + sold),
           earliestExpiry, expiryDaysLeft,
         });
       }
@@ -522,7 +522,7 @@ export async function getInventoryMetrics(dateFrom?: string, dateTo?: string, ga
       collectionResults.push({
         collection,
         totalCodes: cTotal, received: cReceived, registered: cRegistered, sold: cSold,
-        revenue: cRevenue, salesRate: rate(cSold, cTotal),
+        revenue: cRevenue, salesRate: rate(cSold, cRegistered + cSold),
         items: itemResults,
       });
     }
@@ -531,7 +531,7 @@ export async function getInventoryMetrics(dateFrom?: string, dateTo?: string, ga
     gameResults.push({
       game,
       totalCodes: gTotal, received: gReceived, registered: gRegistered, sold: gSold,
-      revenue: gRevenue, salesRate: rate(gSold, gTotal),
+      revenue: gRevenue, salesRate: rate(gSold, gRegistered + gSold),
       collections: collectionResults,
     });
   }
