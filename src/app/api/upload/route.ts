@@ -12,6 +12,7 @@ export async function POST(req: NextRequest) {
   let fileName: string;
   let expiresAt: string | null;
   let filePath: string | undefined;
+  let initialStatus: "received" | "registered" = "received";
 
   if (contentType.includes("multipart/form-data")) {
     // FormData with CSV file
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
     adminId = body.adminId;
     fileName = body.fileName;
     expiresAt = body.expiresAt || null;
+    if (body.initialStatus === "registered") initialStatus = "registered";
 
     // Upload CSV file to Supabase Storage if available
     const csvFile = formData.get("file") as File | null;
@@ -54,12 +56,13 @@ export async function POST(req: NextRequest) {
     adminId = body.adminId;
     fileName = body.fileName;
     expiresAt = body.expiresAt || null;
+    if (body.initialStatus === "registered") initialStatus = "registered";
   }
 
   if (!groups || !Array.isArray(groups) || !collectionId || !gameId || !adminId) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  const result = await addCodesMultiItem(groups, collectionId, gameId, adminId, fileName, expiresAt, filePath);
+  const result = await addCodesMultiItem(groups, collectionId, gameId, adminId, fileName, expiresAt, filePath, initialStatus);
   return NextResponse.json(result, { status: 201 });
 }

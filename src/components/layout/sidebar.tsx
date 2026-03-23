@@ -10,7 +10,7 @@ import {
   Upload,
   Code2,
   Package,
-  Settings,
+  Users,
   BookOpen,
   LogOut,
   History,
@@ -23,7 +23,7 @@ const NAV_ITEMS = [
   { href: "/batches", label: "업로드 이력", icon: History },
   { href: "/codes", label: "코드 관리", icon: Code2 },
   { href: "/inventory", label: "재고 현황", icon: Package },
-  { href: "/settings", label: "설정", icon: Settings },
+  { href: "/settings", label: "관리자", icon: Users },
 ];
 
 export function Sidebar() {

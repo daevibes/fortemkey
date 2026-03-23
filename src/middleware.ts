@@ -11,12 +11,10 @@ const PUBLIC_PATHS = ["/login", "/auth/callback", "/auth/confirm"];
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 정적 파일, API webhook은 인증 스킵
+  // 정적 파일은 인증 스킵
   if (
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon") ||
-    pathname === "/api/codes/webhook" ||
-    pathname === "/api/sync"
+    pathname.startsWith("/favicon")
   ) {
     return NextResponse.next();
   }

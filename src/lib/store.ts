@@ -15,8 +15,6 @@ import type {
   ExpiryAlert,
   MultiItemUploadResult,
   ValidationResult,
-  SyncLog,
-  SyncStatus,
 } from "./types";
 
 // --- Seed Data ---
@@ -101,8 +99,6 @@ class Store {
   codes: Code[] = generateCodes();
   admins: Admin[] = [...admins];
   batches: UploadBatch[] = [...batches];
-  syncLogs: SyncLog[] = [];
-
   private nextId(arr: { id: number }[]): number {
     return arr.length > 0 ? Math.max(...arr.map((x) => x.id)) + 1 : 1;
   }
@@ -284,6 +280,10 @@ class Store {
       valid_count: validCodes.length,
       duplicate_count: duplicateCodes.length,
       error_count: errorCodes.length,
+      validation_details: {
+        duplicateCodes,
+        errorCodes,
+      },
       uploaded_at: new Date().toISOString(),
     };
     this.batches.push(batch);
@@ -315,7 +315,8 @@ class Store {
     adminId: number,
     fileName: string,
     expiresAt: string | null,
-    filePath?: string
+    filePath?: string,
+    initialStatus: CodeStatus = "received"
   ): MultiItemUploadResult {
     const allBatches: UploadBatch[] = [];
     const itemResults: MultiItemUploadResult["itemResults"] = [];
@@ -380,6 +381,10 @@ class Store {
         duplicate_count: duplicateCodes.length,
         error_count: errorCodes.length,
         ...(filePath ? { file_path: filePath } : {}),
+        validation_details: {
+          duplicateCodes,
+          errorCodes,
+        },
         uploaded_at: new Date().toISOString(),
       };
       this.batches.push(batch);
@@ -390,7 +395,7 @@ class Store {
           id: this.nextId(this.codes),
           code,
           item_id: itemId,
-          status: "received",
+          status: initialStatus,
           batch_id: batchId,
           expires_at: expiresAt,
           sold_at: null,
@@ -416,6 +421,23 @@ class Store {
 
   // Batches
   getBatches() { return this.batches.sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime()); }
+
+  // Get status summary per batch: { batchId: { received, registered, sold } }
+  getBatchStatusSummary(): Record<number, { received: number; registered: number; sold: number }> {
+    const result: Record<number, { received: number; registered: number; sold: number }> = {};
+    for (const code of this.codes) {
+      if (!result[code.batch_id]) result[code.batch_id] = { received: 0, registered: 0, sold: 0 };
+      result[code.batch_id][code.status]++;
+    }
+    return result;
+  }
+
+  updateBatchPromotions(id: number, promotions: { count: number; discount: number }[]): UploadBatch | null {
+    const batch = this.batches.find((b) => b.id === id);
+    if (!batch) return null;
+    batch.promotions = promotions;
+    return batch;
+  }
 
   // Inventory
   getInventorySummary(): InventorySummary[] {
@@ -568,63 +590,31 @@ class Store {
     return alerts.sort((a, b) => a.daysLeft - b.daysLeft);
   }
 
-  // Sync logs
-  createSyncLog(): SyncLog {
-    const log: SyncLog = {
-      id: this.nextId(this.syncLogs),
-      started_at: new Date().toISOString(),
-      finished_at: null,
-      status: "running",
-      total_fetched: 0,
-      new_sold: 0,
-      not_found: 0,
-      error_message: null,
-      details: null,
-    };
-    this.syncLogs.push(log);
-    return log;
-  }
-
-  updateSyncLog(id: number, data: Partial<Omit<SyncLog, "id" | "started_at">>): SyncLog | null {
-    const idx = this.syncLogs.findIndex((l) => l.id === id);
-    if (idx < 0) return null;
-    this.syncLogs[idx] = { ...this.syncLogs[idx], ...data };
-    return this.syncLogs[idx];
-  }
-
-  getSyncLogs(limit = 10): SyncLog[] {
-    return [...this.syncLogs]
-      .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
-      .slice(0, limit);
-  }
-
-  getLatestSyncLog(): SyncLog | null {
-    if (this.syncLogs.length === 0) return null;
-    return [...this.syncLogs].sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())[0];
-  }
-
-  hasRunningSyncLog(): boolean {
-    return this.syncLogs.some((l) => l.status === "running");
-  }
-
-  // Bulk update codes to sold by code values — returns { found, notFound }
-  bulkMarkSold(codeValues: string[]): { soldCodes: string[]; notFoundCodes: string[] } {
-    const soldCodes: string[] = [];
-    const notFoundCodes: string[] = [];
-
-    for (const val of codeValues) {
-      const code = this.codes.find((c) => c.code === val);
-      if (!code) {
-        notFoundCodes.push(val);
-        continue;
+  // Mark all codes in given batches as sold
+  markBatchSold(batchIds: number[]): { updatedCount: number } {
+    let count = 0;
+    const batchIdSet = new Set(batchIds);
+    for (const code of this.codes) {
+      if (batchIdSet.has(code.batch_id) && code.status !== "sold") {
+        code.status = "sold";
+        code.sold_at = new Date().toISOString();
+        count++;
       }
-      if (code.status === "sold") continue; // already sold, skip
-      code.status = "sold";
-      code.sold_at = new Date().toISOString();
-      soldCodes.push(val);
     }
+    return { updatedCount: count };
+  }
 
-    return { soldCodes, notFoundCodes };
+  // Change all codes in a batch to a specific status
+  changeBatchStatus(batchId: number, status: CodeStatus): { updatedCount: number } {
+    let count = 0;
+    for (const code of this.codes) {
+      if (code.batch_id === batchId && code.status !== status) {
+        code.status = status;
+        code.sold_at = status === "sold" ? new Date().toISOString() : null;
+        count++;
+      }
+    }
+    return { updatedCount: count };
   }
 
   // Helper: get game_id for an item (via collection)

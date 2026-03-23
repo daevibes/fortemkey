@@ -20,7 +20,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import type { Game, InventoryMetrics, CollectionMetrics } from "@/lib/types";
+import type { Game, InventoryMetrics, CollectionMetrics, UploadBatch } from "@/lib/types";
 
 const PIE_COLORS = ["#facc15", "#3b82f6", "#22c55e"];
 
@@ -36,6 +36,7 @@ export default function InventoryPage() {
   const [chartTab, setChartTab] = useState<ChartTab>("collection");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [batches, setBatches] = useState<UploadBatch[]>([]);
 
   const fetchMetrics = useCallback(() => {
     const params = new URLSearchParams();
@@ -48,6 +49,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     fetch("/api/games").then((r) => r.json()).then(setGames);
+    fetch("/api/batches").then((r) => r.json()).then((data: UploadBatch[]) => setBatches(Array.isArray(data) ? data : []));
   }, []);
 
   useEffect(() => {
@@ -78,6 +80,21 @@ export default function InventoryPage() {
       else next.add(colId);
       return next;
     });
+  };
+
+  // Calculate promo discount from batches
+  const calcPromoDiscount = (itemId?: number): number => {
+    const targetBatches = itemId ? batches.filter((b) => b.item_id === itemId) : batches;
+    let totalDiscount = 0;
+    for (const batch of targetBatches) {
+      if (!batch.promotions) continue;
+      const item = metrics?.games.flatMap((g) => g.collections.flatMap((c) => c.items)).find((i) => i.item.id === batch.item_id);
+      const price = item?.item.price ?? 0;
+      for (const promo of batch.promotions) {
+        totalDiscount += promo.count * price * (promo.discount / 100);
+      }
+    }
+    return Math.round(totalDiscount * 100) / 100;
   };
 
   if (!metrics) return <div className="p-6 text-neutral-400">로딩 중...</div>;
@@ -216,7 +233,10 @@ export default function InventoryPage() {
             </div>
             <div>
               <p className="text-sm text-neutral-400">매출</p>
-              <p className="text-2xl font-bold text-neutral-100">${formatNumber(Math.round(metrics.revenue * 100) / 100)}</p>
+              <p className="text-2xl font-bold text-neutral-100">${formatNumber(Math.round((metrics.revenue - calcPromoDiscount()) * 100) / 100)}</p>
+              {calcPromoDiscount() > 0 && (
+                <p className="text-xs text-neutral-500">정가 ${formatNumber(Math.round(metrics.revenue * 100) / 100)} · 할인 -${formatNumber(calcPromoDiscount())}</p>
+              )}
             </div>
           </CardContent>
         </Card>

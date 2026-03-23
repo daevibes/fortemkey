@@ -51,6 +51,8 @@ CREATE TABLE upload_batches (
   duplicate_count INT NOT NULL DEFAULT 0,
   error_count INT NOT NULL DEFAULT 0,
   file_path TEXT,
+  validation_details JSONB,
+  promotions JSONB,
   uploaded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -59,25 +61,11 @@ CREATE TABLE codes (
   id SERIAL PRIMARY KEY,
   code VARCHAR(500) NOT NULL UNIQUE,
   item_id INT NOT NULL REFERENCES items(id),
-  status VARCHAR(20) NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'registered', 'sold', 'redeemed')),
+  status VARCHAR(20) NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'registered', 'sold')),
   batch_id INT REFERENCES upload_batches(id),
   expires_at TIMESTAMPTZ,
   sold_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 동기화 로그
-CREATE TABLE sync_logs (
-  id SERIAL PRIMARY KEY,
-  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  finished_at TIMESTAMPTZ,
-  status VARCHAR(20) NOT NULL DEFAULT 'running'
-    CHECK (status IN ('running', 'success', 'failed')),
-  total_fetched INT DEFAULT 0,
-  new_sold INT DEFAULT 0,
-  not_found INT DEFAULT 0,
-  error_message TEXT,
-  details JSONB
 );
 
 -- 인덱스

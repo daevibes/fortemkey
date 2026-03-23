@@ -16,7 +16,6 @@ import type {
   ExpiryAlert,
   MultiItemUploadResult,
   ValidationResult,
-  SyncLog,
 } from "./types";
 
 // ─── Helper ───
@@ -221,6 +220,25 @@ export async function getBatch(id: number): Promise<UploadBatch | undefined> {
   return data as UploadBatch;
 }
 
+export async function getBatchStatusSummary(): Promise<Record<number, { received: number; registered: number; sold: number }>> {
+  if (!isConnected()) return getStore().getBatchStatusSummary();
+  const { data, error } = await supabase!.from("codes").select("batch_id, status");
+  if (error) throw new Error(error.message);
+  const result: Record<number, { received: number; registered: number; sold: number }> = {};
+  for (const row of data as { batch_id: number; status: "received" | "registered" | "sold" }[]) {
+    if (!result[row.batch_id]) result[row.batch_id] = { received: 0, registered: 0, sold: 0 };
+    result[row.batch_id][row.status]++;
+  }
+  return result;
+}
+
+export async function updateBatchPromotions(id: number, promotions: { count: number; discount: number }[]): Promise<UploadBatch | null> {
+  if (!isConnected()) return getStore().updateBatchPromotions(id, promotions);
+  const { data, error } = await supabase!.from("upload_batches").update({ promotions }).eq("id", id).select().single();
+  if (error) return null;
+  return data as UploadBatch;
+}
+
 // ─── Codes ───
 
 export async function getCodes(filters?: {
@@ -311,18 +329,6 @@ export async function updateCodeStatus(id: number, status: CodeStatus): Promise<
   return data as Code;
 }
 
-// ─── Webhook: find code by value ───
-
-export async function findCodeByValue(codeValue: string): Promise<Code | null> {
-  if (!isConnected()) {
-    const result = getStore().getCodes({ search: codeValue, pageSize: 1 });
-    return result.codes.find((c) => c.code === codeValue) ?? null;
-  }
-  const { data, error } = await supabase!.from("codes").select("*").eq("code", codeValue).single();
-  if (error) return null;
-  return data as Code;
-}
-
 // ─── Upload: multi-item bulk add ───
 
 export async function addCodesMultiItem(
@@ -332,9 +338,10 @@ export async function addCodesMultiItem(
   adminId: number,
   fileName: string,
   expiresAt: string | null,
-  filePath?: string
+  filePath?: string,
+  initialStatus: CodeStatus = "received"
 ): Promise<MultiItemUploadResult> {
-  if (!isConnected()) return getStore().addCodesMultiItem(groups, collectionId, gameId, adminId, fileName, expiresAt, filePath);
+  if (!isConnected()) return getStore().addCodesMultiItem(groups, collectionId, gameId, adminId, fileName, expiresAt, filePath, initialStatus);
 
   // Get all existing code values for dedup
   const { data: existingCodesData } = await supabase!.from("codes").select("code");
@@ -396,6 +403,10 @@ export async function addCodesMultiItem(
       duplicate_count: duplicateCodes.length,
       error_count: errorCodes.length,
       ...(filePath ? { file_path: filePath } : {}),
+      validation_details: {
+        duplicateCodes,
+        errorCodes,
+      },
     }).select().single();
     if (batchErr) throw new Error(batchErr.message);
     const batchData = batch as UploadBatch;
@@ -406,7 +417,7 @@ export async function addCodesMultiItem(
       const chunk = validCodes.slice(i, i + 1000).map((code) => ({
         code,
         item_id: itemId,
-        status: "received" as const,
+        status: initialStatus as string,
         batch_id: batchData.id,
         expires_at: expiresAt,
         sold_at: null,
@@ -614,86 +625,37 @@ export async function getExpiryAlerts(days = 14): Promise<ExpiryAlert[]> {
   return alerts.sort((a, b) => a.daysLeft - b.daysLeft);
 }
 
-// ─── Sync Logs ───
+// ─── Batch Sold Out ───
 
-export async function createSyncLog(): Promise<SyncLog> {
-  if (!isConnected()) return getStore().createSyncLog();
-  const { data, error } = await supabase!.from("sync_logs").insert({}).select().single();
-  if (error) throw new Error(error.message);
-  return data as SyncLog;
-}
+export async function markBatchSold(batchIds: number[]): Promise<{ updatedCount: number }> {
+  if (!isConnected()) return getStore().markBatchSold(batchIds);
 
-export async function updateSyncLog(id: number, input: Partial<Omit<SyncLog, "id" | "started_at">>): Promise<SyncLog | null> {
-  if (!isConnected()) return getStore().updateSyncLog(id, input);
-  const { data, error } = await supabase!.from("sync_logs").update(input).eq("id", id).select().single();
-  if (error) return null;
-  return data as SyncLog;
-}
-
-export async function getSyncLogs(limit = 10): Promise<SyncLog[]> {
-  if (!isConnected()) return getStore().getSyncLogs(limit);
-  const { data, error } = await supabase!.from("sync_logs").select("*").order("started_at", { ascending: false }).limit(limit);
-  if (error) throw new Error(error.message);
-  return data as SyncLog[];
-}
-
-export async function getLatestSyncLog(): Promise<SyncLog | null> {
-  if (!isConnected()) return getStore().getLatestSyncLog();
-  const { data, error } = await supabase!.from("sync_logs").select("*").order("started_at", { ascending: false }).limit(1).single();
-  if (error) return null;
-  return data as SyncLog;
-}
-
-export async function getLastSuccessfulSyncLog(): Promise<SyncLog | null> {
-  if (!isConnected()) {
-    const logs = getStore().getSyncLogs(100);
-    return logs.find((l) => l.status === "success") ?? null;
-  }
   const { data, error } = await supabase!
-    .from("sync_logs")
-    .select("*")
-    .eq("status", "success")
-    .order("started_at", { ascending: false })
-    .limit(1)
-    .single();
-  if (error) return null;
-  return data as SyncLog;
+    .from("codes")
+    .update({ status: "sold", sold_at: new Date().toISOString() })
+    .in("batch_id", batchIds)
+    .neq("status", "sold")
+    .select("id");
+  if (error) throw new Error(error.message);
+  return { updatedCount: data?.length ?? 0 };
 }
 
-export async function hasRunningSyncLog(): Promise<boolean> {
-  if (!isConnected()) return getStore().hasRunningSyncLog();
-  const { count } = await supabase!.from("sync_logs").select("id", { count: "exact", head: true }).eq("status", "running");
-  return (count ?? 0) > 0;
-}
+export async function changeBatchStatus(batchId: number, status: CodeStatus): Promise<{ updatedCount: number }> {
+  if (!isConnected()) return getStore().changeBatchStatus(batchId, status);
 
-export async function bulkMarkSold(codeValues: string[]): Promise<{ soldCodes: string[]; notFoundCodes: string[] }> {
-  if (!isConnected()) return getStore().bulkMarkSold(codeValues);
-
-  const soldCodes: string[] = [];
-  const notFoundCodes: string[] = [];
-
-  // Process in chunks to avoid query size limits
-  for (let i = 0; i < codeValues.length; i += 1000) {
-    const chunk = codeValues.slice(i, i + 1000);
-    const { data: found } = await supabase!.from("codes").select("id, code, status").in("code", chunk);
-    const foundMap = new Map((found || []).map((c: { id: number; code: string; status: string }) => [c.code, c]));
-
-    const toUpdate: number[] = [];
-    for (const val of chunk) {
-      const code = foundMap.get(val);
-      if (!code) {
-        notFoundCodes.push(val);
-        continue;
-      }
-      if (code.status === "sold") continue;
-      toUpdate.push(code.id);
-      soldCodes.push(val);
-    }
-
-    if (toUpdate.length > 0) {
-      await supabase!.from("codes").update({ status: "sold", sold_at: new Date().toISOString() }).in("id", toUpdate);
-    }
+  const updateData: Record<string, unknown> = { status };
+  if (status === "sold") {
+    updateData.sold_at = new Date().toISOString();
+  } else {
+    updateData.sold_at = null;
   }
 
-  return { soldCodes, notFoundCodes };
+  const { data, error } = await supabase!
+    .from("codes")
+    .update(updateData)
+    .eq("batch_id", batchId)
+    .neq("status", status)
+    .select("id");
+  if (error) throw new Error(error.message);
+  return { updatedCount: data?.length ?? 0 };
 }

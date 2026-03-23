@@ -55,6 +55,11 @@ export interface UploadBatch {
   duplicate_count: number;
   error_count: number;
   file_path?: string;
+  validation_details?: {
+    duplicateCodes: string[];
+    errorCodes: { code: string; reason: string }[];
+  } | null;
+  promotions?: { count: number; discount: number }[] | null;
   uploaded_at: string;
 }
 
@@ -134,42 +139,6 @@ export interface InventoryMetrics {
   }[];
 }
 
-export type SyncStatus = "running" | "success" | "failed";
-
-export interface SyncLog {
-  id: number;
-  started_at: string;
-  finished_at: string | null;
-  status: SyncStatus;
-  total_fetched: number;
-  new_sold: number;
-  not_found: number;
-  error_message: string | null;
-  details: {
-    new_sold_codes?: string[];
-    not_found_codes?: string[];
-    api_response_time_ms?: number;
-    since?: string;
-  } | null;
-}
-
-export interface SyncSettings {
-  apiUrl: string;
-  apiKey: string;
-  pollingInterval: number; // minutes: 5, 10, 30, or 0 (manual only)
-}
-
-export const SYNC_STATUS_COLORS: Record<SyncStatus, string> = {
-  running: "bg-blue-900/30 text-blue-400",
-  success: "bg-green-900/30 text-green-400",
-  failed: "bg-red-900/30 text-red-400",
-};
-
-export const SYNC_STATUS_LABELS: Record<SyncStatus, string> = {
-  running: "실행 중",
-  success: "성공",
-  failed: "실패",
-};
 
 export interface ParsedItemGroup {
   itemName: string;

@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatNumber, formatDateTime } from "@/lib/utils";
 import Link from "next/link";
-import { Package, AlertTriangle, Upload, Code2, Clock, RefreshCw, CheckCircle2, XCircle } from "lucide-react";
-import type { UploadBatch, Game, Admin, Collection, InventoryMetrics, InventorySummary, ExpiryAlert, SyncLog } from "@/lib/types";
-import { SYNC_STATUS_COLORS, SYNC_STATUS_LABELS } from "@/lib/types";
+import { Package, AlertTriangle, Upload, Code2, Clock } from "lucide-react";
+import type { UploadBatch, Game, Admin, Collection, InventoryMetrics, InventorySummary, ExpiryAlert } from "@/lib/types";
 
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState<InventoryMetrics | null>(null);
@@ -16,9 +15,6 @@ export default function DashboardPage() {
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [expiryAlerts, setExpiryAlerts] = useState<ExpiryAlert[]>([]);
-  const [syncStatus, setSyncStatus] = useState<{ running: boolean; latest: SyncLog | null }>({ running: false, latest: null });
-
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refreshDashboard = useCallback(() => {
     Promise.all([
@@ -28,79 +24,19 @@ export default function DashboardPage() {
       fetch("/api/admins").then((r) => r.json()).catch(() => []),
       fetch("/api/collections").then((r) => r.json()).catch(() => []),
       fetch("/api/expiry-alerts").then((r) => r.json()).catch(() => []),
-      fetch("/api/sync?status=true").then((r) => r.json()).catch(() => ({ running: false, latest: null })),
-    ]).then(([inv, bat, gam, adm, col, exp, sync]) => {
+    ]).then(([inv, bat, gam, adm, col, exp]) => {
       setMetrics(inv);
       setBatches(Array.isArray(bat) ? bat : []);
       setGames(Array.isArray(gam) ? gam : []);
       setAdmins(Array.isArray(adm) ? adm : []);
       setCollections(Array.isArray(col) ? col : []);
       setExpiryAlerts(Array.isArray(exp) ? exp : []);
-      setSyncStatus(sync || { running: false, latest: null });
     });
   }, []);
 
   // Initial load
   useEffect(() => {
     refreshDashboard();
-  }, [refreshDashboard]);
-
-  // Browser polling: trigger sync at configured interval
-  useEffect(() => {
-    // Read polling interval from localStorage
-    let intervalMinutes = 0;
-    try {
-      const saved = localStorage.getItem("fortem_sync_settings");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        intervalMinutes = parsed.pollingInterval ?? 0;
-      }
-    } catch {}
-
-    // Clear previous interval
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-
-    if (intervalMinutes <= 0) return;
-
-    const intervalMs = intervalMinutes * 60 * 1000;
-
-    pollingRef.current = setInterval(async () => {
-      try {
-        // Read API settings
-        let apiUrl = "";
-        let apiKey = "";
-        try {
-          const saved = localStorage.getItem("fortem_sync_settings");
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            apiUrl = parsed.apiUrl || "";
-            apiKey = parsed.apiKey || "";
-          }
-        } catch {}
-
-        // Trigger sync
-        await fetch("/api/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ apiUrl, apiKey }),
-        });
-
-        // Refresh dashboard data after sync
-        refreshDashboard();
-      } catch {
-        // Silently ignore polling errors
-      }
-    }, intervalMs);
-
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    };
   }, [refreshDashboard]);
 
   const totalCodes = metrics?.totalCodes ?? 0;
@@ -164,45 +100,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Sync Status */}
-      {syncStatus.latest && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-neutral-400">
-              <RefreshCw className="h-4 w-4" />
-              마켓플레이스 동기화
-            </CardTitle>
-            <Badge className={SYNC_STATUS_COLORS[syncStatus.latest.status]}>
-              {SYNC_STATUS_LABELS[syncStatus.latest.status]}
-            </Badge>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-neutral-300">
-                  마지막 동기화: {formatDateTime(syncStatus.latest.started_at)}
-                </p>
-                {syncStatus.latest.status === "success" && (
-                  <p className="mt-1 text-xs text-neutral-400 flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3 text-green-400" />
-                    코드 {formatNumber(syncStatus.latest.total_fetched)}건 확인, 신규 판매 {formatNumber(syncStatus.latest.new_sold)}건 반영
-                  </p>
-                )}
-                {syncStatus.latest.status === "failed" && (
-                  <p className="mt-1 text-xs text-red-400 flex items-center gap-1">
-                    <XCircle className="h-3 w-3" />
-                    {syncStatus.latest.error_message || "동기화 실패"}
-                  </p>
-                )}
-                {syncStatus.latest.status === "running" && (
-                  <p className="mt-1 text-xs text-blue-400">동기화 진행 중...</p>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Low Stock Alerts */}

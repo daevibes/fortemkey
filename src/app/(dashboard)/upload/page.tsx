@@ -10,7 +10,7 @@ import { SelectNative } from "@/components/ui/select-native";
 import { Badge } from "@/components/ui/badge";
 import { formatNumber } from "@/lib/utils";
 import { Upload, FileCheck, AlertCircle, Download, Plus, Check } from "lucide-react";
-import type { Game, Collection, Item, Admin, ParsedItemGroup, MultiItemUploadResult } from "@/lib/types";
+import type { Game, Collection, Item, Admin, MultiItemUploadResult } from "@/lib/types";
 
 export default function UploadPage() {
   return (
@@ -30,21 +30,26 @@ function UploadPageContent() {
 
   const [selectedGame, setSelectedGame] = useState(searchParams.get("game_id") || "");
   const [selectedCollection, setSelectedCollection] = useState(searchParams.get("collection_id") || "");
+  const [selectedItem, setSelectedItem] = useState("");
   const [selectedAdmin, setSelectedAdmin] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [noExpiry, setNoExpiry] = useState(false);
+  const [initialStatus, setInitialStatus] = useState<"received" | "registered">("received");
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState("");
-  const [parsedGroups, setParsedGroups] = useState<ParsedItemGroup[]>([]);
+  const [parsedCodes, setParsedCodes] = useState<string[]>([]);
   const [parseError, setParseError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
 
-  // Inline new game/collection
+  // Inline new game/collection/item
   const [showNewGame, setShowNewGame] = useState(false);
   const [newGameName, setNewGameName] = useState("");
   const [newGamePublisher, setNewGamePublisher] = useState("");
   const [showNewCollection, setShowNewCollection] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
+  const [showNewItem, setShowNewItem] = useState(false);
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemPrice, setNewItemPrice] = useState("");
 
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<MultiItemUploadResult | null>(null);
@@ -69,6 +74,7 @@ function UploadPageContent() {
       setSelectedCollection("");
     }
     setExistingItems([]);
+    setSelectedItem("");
   }, [selectedGame, searchParams]);
 
   // Load existing items when collection changes
@@ -76,29 +82,13 @@ function UploadPageContent() {
     if (selectedCollection && selectedCollection !== "__new__") {
       fetch(`/api/items?collection_id=${selectedCollection}`).then((r) => r.json()).then((items: Item[]) => {
         setExistingItems(items);
-        // Re-match parsed groups against new items
-        if (parsedGroups.length > 0) {
-          setParsedGroups((prev) => matchGroupsToItems(prev, items));
-        }
       });
     } else {
       setExistingItems([]);
     }
+    setSelectedItem("");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCollection]);
-
-  const matchGroupsToItems = (groups: ParsedItemGroup[], items: Item[]): ParsedItemGroup[] => {
-    return groups.map((g) => {
-      const match = items.find((i) => i.name.trim().toLowerCase() === g.itemName.trim().toLowerCase());
-      return {
-        ...g,
-        existingItemId: match ? match.id : null,
-        existingPrice: match ? match.price : null,
-        isNew: !match,
-        checked: !match ? g.checked : false,
-      };
-    });
-  };
 
   const handleFile = useCallback((file: File) => {
     setCsvFile(file);
@@ -110,53 +100,32 @@ function UploadPageContent() {
       skipEmptyLines: true,
       complete(results) {
         const headers = results.meta.fields || [];
-        const hasItemName = headers.some((h) => h.trim() === "아이템명");
-        const hasCode = headers.some((h) => h.trim() === "코드");
+        const hasProductCode = headers.some((h) => h.trim() === "product_code");
 
-        if (!hasItemName || !hasCode) {
-          setParseError("CSV에 '아이템명', '코드' 컬럼이 필요합니다.");
-          setParsedGroups([]);
+        if (!hasProductCode) {
+          setParseError("CSV에 'product_code' 컬럼이 필요합니다.");
+          setParsedCodes([]);
           return;
         }
 
         const rows = results.data as Record<string, string>[];
-        const groupMap = new Map<string, { codes: string[]; price: number }>();
+        const codes: string[] = [];
 
         for (const row of rows) {
-          const itemName = (row["아이템명"] || "").trim();
-          const code = (row["코드"] || "").trim();
-          const price = parseFloat(row["가격"] || "0") || 0;
-
-          if (!itemName || !code) continue;
-
-          if (!groupMap.has(itemName)) {
-            groupMap.set(itemName, { codes: [], price });
-          }
-          groupMap.get(itemName)!.codes.push(code);
+          const code = (row["product_code"] || "").trim();
+          if (code) codes.push(code);
         }
 
-        if (groupMap.size === 0) {
-          setParseError("유효한 데이터가 없습니다.");
-          setParsedGroups([]);
+        if (codes.length === 0) {
+          setParseError("유효한 코드가 없습니다.");
+          setParsedCodes([]);
           return;
         }
 
-        const groups: ParsedItemGroup[] = Array.from(groupMap.entries()).map(([itemName, data]) => ({
-          itemName,
-          codes: data.codes,
-          price: data.price,
-          existingItemId: null,
-          existingPrice: null,
-          isNew: true,
-          checked: true,
-        }));
-
-        // Match against existing items if collection is selected
-        setParsedGroups(matchGroupsToItems(groups, existingItems));
+        setParsedCodes(codes);
       },
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existingItems]);
+  }, []);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -173,29 +142,11 @@ function UploadPageContent() {
     if (file) handleFile(file);
   };
 
-  const toggleGroupCheck = (idx: number) => {
-    setParsedGroups((prev) =>
-      prev.map((g, i) => (i === idx && g.isNew ? { ...g, checked: !g.checked } : g))
-    );
-  };
-
-  const toggleSelectAll = () => {
-    const newGroups = parsedGroups.filter((g) => g.isNew);
-    const allChecked = newGroups.every((g) => g.checked);
-    setParsedGroups((prev) =>
-      prev.map((g) => (g.isNew ? { ...g, checked: !allChecked } : g))
-    );
-  };
-
-  const hasExistingItems = parsedGroups.some((g) => !g.isNew);
-  const hasCheckedNew = parsedGroups.some((g) => g.isNew && g.checked);
-  const activeGroups = parsedGroups.filter((g) => !g.isNew || g.checked);
-  const totalActiveCodes = activeGroups.reduce((sum, g) => sum + g.codes.length, 0);
-
   const gameReady = selectedGame && selectedGame !== "__new__";
   const collectionReady = selectedCollection && selectedCollection !== "__new__";
+  const itemReady = (selectedItem && selectedItem !== "__new__") || (showNewItem && newItemName.trim());
   const expiryReady = noExpiry || !!expiresAt;
-  const canUpload = gameReady && collectionReady && selectedAdmin && expiryReady && parsedGroups.length > 0 && (hasExistingItems || hasCheckedNew) && !uploading;
+  const canUpload = gameReady && collectionReady && itemReady && selectedAdmin && expiryReady && parsedCodes.length > 0 && !uploading;
 
   const handleGameSelect = (val: string) => {
     if (val === "__new__") {
@@ -214,6 +165,16 @@ function UploadPageContent() {
     } else {
       setShowNewCollection(false);
       setSelectedCollection(val);
+    }
+  };
+
+  const handleItemSelect = (val: string) => {
+    if (val === "__new__") {
+      setShowNewItem(true);
+      setSelectedItem("");
+    } else {
+      setShowNewItem(false);
+      setSelectedItem(val);
     }
   };
 
@@ -250,20 +211,30 @@ function UploadPageContent() {
     if (!canUpload) return;
     setUploading(true);
     try {
-      const uploadGroups = activeGroups.map((g) => ({
-        itemName: g.itemName,
-        codes: g.codes,
-        price: g.price,
-        existingItemId: g.existingItemId,
-      }));
+      // Determine item info
+      let itemName: string;
+      let price: number;
+      let existingItemId: number | null;
+
+      if (selectedItem && selectedItem !== "__new__") {
+        const item = existingItems.find((i) => i.id === Number(selectedItem));
+        itemName = item?.name || "";
+        price = item?.price || 0;
+        existingItemId = Number(selectedItem);
+      } else {
+        itemName = newItemName.trim();
+        price = parseFloat(newItemPrice) || 0;
+        existingItemId = null;
+      }
 
       const jsonData = JSON.stringify({
-        groups: uploadGroups,
+        groups: [{ itemName, codes: parsedCodes, price, existingItemId }],
         collectionId: Number(selectedCollection),
         gameId: Number(selectedGame),
         adminId: Number(selectedAdmin),
         fileName,
         expiresAt: noExpiry ? null : (expiresAt || null),
+        initialStatus,
       });
 
       const formData = new FormData();
@@ -285,13 +256,13 @@ function UploadPageContent() {
 
   const downloadErrors = () => {
     if (!result) return;
-    const rows: string[][] = [["아이템명", "코드", "사유"]];
+    const rows: string[][] = [["코드", "사유"]];
     for (const ir of result.itemResults) {
       for (const e of ir.validation.errorCodes) {
-        rows.push([ir.itemName, e.code, e.reason]);
+        rows.push([e.code, e.reason]);
       }
       for (const c of ir.validation.duplicateCodes) {
-        rows.push([ir.itemName, c, "중복"]);
+        rows.push([c, "중복"]);
       }
     }
     const csv = rows.map((r) => r.join(",")).join("\n");
@@ -304,7 +275,8 @@ function UploadPageContent() {
     URL.revokeObjectURL(url);
   };
 
-  const newItemGroups = parsedGroups.filter((g) => g.isNew);
+  // Get selected item info for display
+  const selectedItemObj = selectedItem ? existingItems.find((i) => i.id === Number(selectedItem)) : null;
 
   return (
     <div className="space-y-6">
@@ -317,7 +289,6 @@ function UploadPageContent() {
             <CardTitle>CSV 파일 업로드</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Meta Info — Game, Collection, Admin, Expiry (선행 설정) */}
             <div className="space-y-3">
               {/* Game */}
               <div>
@@ -397,6 +368,42 @@ function UploadPageContent() {
                 )}
               </div>
 
+              {/* Item */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-neutral-200">아이템</label>
+                <SelectNative
+                  value={selectedItem}
+                  onChange={(e) => handleItemSelect(e.target.value)}
+                  placeholder="아이템 선택"
+                  options={[
+                    ...existingItems.map((i) => ({ value: String(i.id), label: `${i.name} ($${i.price})` })),
+                    ...(collectionReady ? [{ value: "__new__", label: "+ 새로 추가" }] : []),
+                  ]}
+                  disabled={!collectionReady}
+                />
+                {showNewItem && (
+                  <div className="mt-2 space-y-2 rounded-lg border border-neutral-600 bg-neutral-800/50 p-3">
+                    <Input
+                      placeholder="아이템 이름"
+                      value={newItemName}
+                      onChange={(e) => setNewItemName(e.target.value)}
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-neutral-400">$</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="가격 (0이면 무료)"
+                        value={newItemPrice}
+                        onChange={(e) => setNewItemPrice(e.target.value)}
+                        className="flex-1"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Admin */}
               <div>
                 <label className="mb-1 block text-sm font-medium text-neutral-200">담당자</label>
@@ -432,15 +439,34 @@ function UploadPageContent() {
                   <p className="text-xs text-neutral-500">유통기한 없이 등록됩니다.</p>
                 )}
               </div>
+
+              {/* Initial Status */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-neutral-200">초기 상태</label>
+                <SelectNative
+                  value={initialStatus}
+                  onChange={(e) => setInitialStatus(e.target.value as "received" | "registered")}
+                  options={[
+                    { value: "received", label: "대기 (received)" },
+                    { value: "registered", label: "등록 (registered)" },
+                  ]}
+                />
+                <p className="mt-1 text-xs text-neutral-500">
+                  {initialStatus === "registered"
+                    ? "이미 마켓에 등록한 코드로 간주됩니다."
+                    : "업로드 후 대기 상태로 저장됩니다."}
+                </p>
+              </div>
             </div>
 
-            {/* CSV Upload — 게임/컬렉션 선택 후 활성화 */}
+            {/* CSV format guide */}
             <div className="rounded-lg border border-neutral-700 bg-neutral-800/50 p-3 text-xs text-neutral-400">
               <p className="mb-1 font-medium text-neutral-300">CSV 양식</p>
-              <code className="block whitespace-pre text-neutral-500">아이템명,코드,가격{"\n"}골드 1000,ABC-123-DEF,5.00{"\n"}스킨 팩,MNO-789-PQR,15.00</code>
-              <p className="mt-1 text-neutral-500">* 가격 컬럼은 선택 (없으면 0)</p>
+              <code className="block whitespace-pre text-neutral-500">product_code{"\n"}ABCD-1234-EFGH-5678{"\n"}IJKL-5678-MNOP-9012</code>
+              <p className="mt-1 text-neutral-500">* 헤더는 반드시 product_code</p>
             </div>
 
+            {/* CSV drop zone */}
             {collectionReady ? (
               <div
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -458,7 +484,7 @@ function UploadPageContent() {
                 </label>
                 {fileName && !parseError && (
                   <p className="mt-3 text-sm font-medium text-neutral-100">
-                    {fileName} ({formatNumber(parsedGroups.reduce((s, g) => s + g.codes.length, 0))}건 파싱됨, {parsedGroups.length}개 아이템)
+                    {fileName} ({formatNumber(parsedCodes.length)}건 파싱됨)
                   </p>
                 )}
                 {parseError && (
@@ -472,130 +498,69 @@ function UploadPageContent() {
               <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-neutral-700 bg-neutral-800/30 p-8">
                 <Upload className="mb-2 h-8 w-8 text-neutral-600" />
                 <p className="text-sm text-neutral-500">게임과 컬렉션을 먼저 선택해주세요</p>
-                <p className="mt-1 text-xs text-neutral-600">CSV 파싱 시 기존/신규 아이템 구분에 필요합니다</p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Validation / Analysis */}
+        {/* Analysis / Result */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileCheck className="h-5 w-5" />
-              {result ? "업로드 결과" : "CSV 분석 결과"}
+              {result ? "업로드 결과" : "업로드 준비"}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {!result && parsedGroups.length === 0 ? (
-              <p className="text-sm text-neutral-400">CSV 파일을 업로드하면 아이템별 분석 결과가 표시됩니다.</p>
+            {!result && parsedCodes.length === 0 ? (
+              <p className="text-sm text-neutral-400">CSV 파일을 업로드하면 분석 결과가 표시됩니다.</p>
             ) : !result ? (
-              /* Pre-upload analysis */
+              /* Pre-upload summary */
               <div className="space-y-4">
-                {/* Select all toggle for new items */}
-                {newItemGroups.length > 0 && (
-                  <label className="flex cursor-pointer items-center gap-2 text-sm text-neutral-300">
-                    <input
-                      type="checkbox"
-                      checked={newItemGroups.every((g) => g.checked)}
-                      onChange={toggleSelectAll}
-                      className="h-4 w-4 rounded border-neutral-600 bg-neutral-800 accent-blue-500"
-                    />
-                    전체 선택 (신규 아이템 {newItemGroups.length}개)
-                  </label>
+                <div className="rounded-lg bg-neutral-800/50 p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-neutral-400">파싱된 코드</span>
+                    <span className="font-medium text-neutral-100">{formatNumber(parsedCodes.length)}건</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-neutral-400">아이템</span>
+                    <span className="font-medium text-neutral-100">
+                      {selectedItemObj ? (
+                        <>{selectedItemObj.name} <Badge className="ml-1 bg-blue-900/30 text-blue-400 text-xs">기존</Badge></>
+                      ) : showNewItem && newItemName.trim() ? (
+                        <>{newItemName.trim()} <Badge className="ml-1 bg-yellow-900/30 text-yellow-400 text-xs">신규</Badge></>
+                      ) : (
+                        <span className="text-neutral-500">미선택</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-neutral-400">가격</span>
+                    <span className="font-medium text-neutral-100">
+                      ${selectedItemObj ? selectedItemObj.price.toFixed(2) : (parseFloat(newItemPrice) || 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-neutral-400">초기 상태</span>
+                    <Badge className={initialStatus === "registered" ? "bg-blue-900/30 text-blue-400" : "bg-yellow-900/30 text-yellow-400"}>
+                      {initialStatus === "registered" ? "등록" : "대기"}
+                    </Badge>
+                  </div>
+                </div>
+
+                {showNewItem && newItemName.trim() && (
+                  <p className="text-xs text-yellow-400">
+                    신규 아이템 &quot;{newItemName.trim()}&quot;이(가) 저장 시 자동 생성됩니다.
+                  </p>
                 )}
 
-                {/* Item summary table */}
-                <div className="overflow-hidden rounded-lg border border-neutral-700">
-                  <table className="w-full text-sm">
-                    <thead className="bg-neutral-800/80">
-                      <tr>
-                        <th className="w-10 px-3 py-2"></th>
-                        <th className="px-3 py-2 text-left text-neutral-300">아이템명</th>
-                        <th className="px-3 py-2 text-right text-neutral-300">코드 수</th>
-                        <th className="px-3 py-2 text-right text-neutral-300">가격</th>
-                        <th className="px-3 py-2 text-center text-neutral-300">상태</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {parsedGroups.map((g, idx) => (
-                        <tr key={idx} className="border-t border-neutral-700/50">
-                          <td className="px-3 py-2 text-center">
-                            {g.isNew ? (
-                              <input
-                                type="checkbox"
-                                checked={g.checked}
-                                onChange={() => toggleGroupCheck(idx)}
-                                className="h-4 w-4 rounded border-neutral-600 bg-neutral-800 accent-blue-500"
-                              />
-                            ) : null}
-                          </td>
-                          <td className="px-3 py-2 font-medium text-neutral-100">{g.itemName}</td>
-                          <td className="px-3 py-2 text-right text-neutral-300">{formatNumber(g.codes.length)}건</td>
-                          <td className="px-3 py-2 text-right">
-                            {g.isNew ? (
-                              <div className="flex items-center justify-end gap-1">
-                                <span className="text-neutral-500">$</span>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  value={g.price || ""}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value) || 0;
-                                    setParsedGroups((prev) => prev.map((p, i) => i === idx ? { ...p, price: val } : p));
-                                  }}
-                                  placeholder="Free"
-                                  className="w-16 rounded border border-neutral-600 bg-neutral-800 px-1.5 py-0.5 text-right text-xs text-neutral-100 placeholder:text-neutral-600 focus:border-blue-500 focus:outline-none"
-                                />
-                              </div>
-                            ) : (
-                              <span className="text-neutral-300">${(g.existingPrice ?? g.price).toFixed(2)}</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            {g.isNew ? (
-                              <Badge className="bg-yellow-900/30 text-yellow-400 text-xs">신규</Badge>
-                            ) : (
-                              <Badge className="bg-blue-900/30 text-blue-400 text-xs">기존</Badge>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Summary */}
-                <div className="rounded-lg bg-neutral-800/50 p-3 text-sm text-neutral-300">
-                  <p>
-                    전체: <span className="font-medium text-neutral-100">{formatNumber(parsedGroups.reduce((s, g) => s + g.codes.length, 0))}건</span>
-                    {" · "}기존 아이템: <span className="font-medium text-neutral-100">{parsedGroups.filter((g) => !g.isNew).length}</span>
-                    {" · "}신규 아이템: <span className="font-medium text-neutral-100">{newItemGroups.length}</span>
-                  </p>
-                  {hasCheckedNew && (
-                    <p className="mt-1 text-xs text-yellow-400">
-                      체크된 신규 아이템은 저장 시 자동 생성됩니다.
-                    </p>
-                  )}
-                  {parsedGroups.some((g) => g.isNew && g.checked && g.price <= 0) && (
-                    <p className="mt-1 text-xs text-yellow-400">
-                      가격 미입력 아이템은 Free(무료)로 등록됩니다.
-                    </p>
-                  )}
-                  <p className="mt-1 text-xs text-neutral-500">
-                    업로드 대상: {formatNumber(totalActiveCodes)}건 ({activeGroups.length}개 아이템)
-                  </p>
-                </div>
-
                 <Button onClick={handleUpload} disabled={!canUpload} className="w-full">
-                  {uploading ? "업로드 중..." : "코드 저장"}
+                  {uploading ? "업로드 중..." : `코드 ${formatNumber(parsedCodes.length)}건 저장`}
                 </Button>
               </div>
             ) : (
               /* Post-upload result */
               <div className="space-y-4">
-                {/* Summary cards */}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="rounded-lg bg-green-900/20 p-4 text-center">
                     <p className="text-2xl font-bold text-green-400">{formatNumber(result.summary.totalValid)}</p>
@@ -611,7 +576,6 @@ function UploadPageContent() {
                   </div>
                 </div>
 
-                {/* Overall info */}
                 <div className="rounded-lg bg-neutral-800/50 p-3 text-sm text-neutral-300">
                   <p>파일: <span className="font-medium text-neutral-100">{fileName}</span></p>
                   <p>전체: {formatNumber(result.summary.totalCodes)}건</p>
@@ -620,42 +584,6 @@ function UploadPageContent() {
                   )}
                 </div>
 
-                {/* Per-item results */}
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-neutral-200">아이템별 결과</p>
-                  <div className="overflow-hidden rounded-lg border border-neutral-700">
-                    <table className="w-full text-xs">
-                      <thead className="bg-neutral-800/80">
-                        <tr>
-                          <th className="px-3 py-2 text-left text-neutral-300">아이템</th>
-                          <th className="px-3 py-2 text-right text-neutral-300">정상</th>
-                          <th className="px-3 py-2 text-right text-neutral-300">중복</th>
-                          <th className="px-3 py-2 text-right text-neutral-300">오류</th>
-                          <th className="px-3 py-2 text-center text-neutral-300">상태</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {result.itemResults.map((ir, idx) => (
-                          <tr key={idx} className="border-t border-neutral-700/50">
-                            <td className="px-3 py-2 text-neutral-100">{ir.itemName}</td>
-                            <td className="px-3 py-2 text-right text-green-400">{formatNumber(ir.validation.validCodes.length)}</td>
-                            <td className="px-3 py-2 text-right text-yellow-400">{formatNumber(ir.validation.duplicateCodes.length)}</td>
-                            <td className="px-3 py-2 text-right text-red-400">{formatNumber(ir.validation.errorCodes.length)}</td>
-                            <td className="px-3 py-2 text-center">
-                              {ir.isNew ? (
-                                <Badge className="bg-green-900/30 text-green-400 text-xs">생성됨</Badge>
-                              ) : (
-                                <Badge className="bg-blue-900/30 text-blue-400 text-xs">기존</Badge>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Download errors */}
                 {(result.summary.totalDuplicate > 0 || result.summary.totalError > 0) && (
                   <Button variant="outline" size="sm" onClick={downloadErrors} className="w-full">
                     <Download className="mr-2 h-4 w-4" />
