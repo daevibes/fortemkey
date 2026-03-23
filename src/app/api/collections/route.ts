@@ -13,8 +13,14 @@ export async function POST(req: NextRequest) {
   if (!game_id || !name) {
     return NextResponse.json({ error: "game_id와 name은 필수입니다." }, { status: 400 });
   }
-  const collection = await addCollection({ game_id, name, description: description || "", image_url: image_url || null });
-  return NextResponse.json(collection, { status: 201 });
+  try {
+    const collection = await addCollection({ game_id, name, description: description || "", image_url: image_url || null });
+    return NextResponse.json(collection, { status: 201 });
+  } catch (err) {
+    console.error("[api/collections] POST error:", err);
+    const message = err instanceof Error ? err.message : "컬렉션 생성 중 오류가 발생했습니다.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function PATCH(req: NextRequest) {

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { SelectNative } from "@/components/ui/select-native";
 import { Badge } from "@/components/ui/badge";
 import { formatNumber } from "@/lib/utils";
-import { Upload, FileCheck, AlertCircle, Download, Plus, Check } from "lucide-react";
+import { Upload, FileCheck, AlertCircle, Download, Plus, Check, CheckCircle2 } from "lucide-react";
 import type { Game, Collection, Item, Admin, MultiItemUploadResult } from "@/lib/types";
 
 export default function UploadPage() {
@@ -53,6 +53,8 @@ function UploadPageContent() {
 
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<MultiItemUploadResult | null>(null);
+  const [uploadError, setUploadError] = useState("");
+  const [createError, setCreateError] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -180,36 +182,55 @@ function UploadPageContent() {
 
   const createNewGame = async () => {
     if (!newGameName.trim() || !newGamePublisher.trim()) return;
-    const res = await fetch("/api/games", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newGameName.trim(), publisher: newGamePublisher.trim() }),
-    });
-    const game = await res.json();
-    setGames((prev) => [...prev, game]);
-    setSelectedGame(String(game.id));
-    setShowNewGame(false);
-    setNewGameName("");
-    setNewGamePublisher("");
+    setCreateError("");
+    try {
+      const res = await fetch("/api/games", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newGameName.trim(), publisher: newGamePublisher.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCreateError(data.error || `게임 생성 실패 (${res.status})`);
+        return;
+      }
+      setGames((prev) => [...prev, data]);
+      setSelectedGame(String(data.id));
+      setShowNewGame(false);
+      setNewGameName("");
+      setNewGamePublisher("");
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "게임 생성 중 오류가 발생했습니다.");
+    }
   };
 
   const createNewCollection = async () => {
     if (!newCollectionName.trim() || !selectedGame) return;
-    const res = await fetch("/api/collections", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ game_id: Number(selectedGame), name: newCollectionName.trim() }),
-    });
-    const collection = await res.json();
-    setCollections((prev) => [...prev, collection]);
-    setSelectedCollection(String(collection.id));
-    setShowNewCollection(false);
-    setNewCollectionName("");
+    setCreateError("");
+    try {
+      const res = await fetch("/api/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ game_id: Number(selectedGame), name: newCollectionName.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCreateError(data.error || `컬렉션 생성 실패 (${res.status})`);
+        return;
+      }
+      setCollections((prev) => [...prev, data]);
+      setSelectedCollection(String(data.id));
+      setShowNewCollection(false);
+      setNewCollectionName("");
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "컬렉션 생성 중 오류가 발생했습니다.");
+    }
   };
 
   const handleUpload = async () => {
     if (!canUpload) return;
     setUploading(true);
+    setUploadError("");
     try {
       // Determine item info
       let itemName: string;
@@ -248,7 +269,15 @@ function UploadPageContent() {
         body: formData,
       });
       const data = await res.json();
+
+      if (!res.ok) {
+        setUploadError(data.error || `업로드 실패 (${res.status})`);
+        return;
+      }
+
       setResult(data);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "업로드 중 오류가 발생했습니다.");
     } finally {
       setUploading(false);
     }
@@ -289,6 +318,14 @@ function UploadPageContent() {
             <CardTitle>CSV 파일 업로드</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {createError && (
+              <div className="rounded-lg border border-red-800 bg-red-900/20 p-3 text-sm text-red-400">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{createError}</span>
+                </div>
+              </div>
+            )}
             <div className="space-y-3">
               {/* Game */}
               <div>
@@ -554,6 +591,15 @@ function UploadPageContent() {
                   </p>
                 )}
 
+                {uploadError && (
+                  <div className="rounded-lg border border-red-800 bg-red-900/20 p-3 text-sm text-red-400">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <span>{uploadError}</span>
+                    </div>
+                  </div>
+                )}
+
                 <Button onClick={handleUpload} disabled={!canUpload} className="w-full">
                   {uploading ? "업로드 중..." : `코드 ${formatNumber(parsedCodes.length)}건 저장`}
                 </Button>
@@ -561,6 +607,17 @@ function UploadPageContent() {
             ) : (
               /* Post-upload result */
               <div className="space-y-4">
+                {/* Success banner */}
+                <div className="flex items-center gap-3 rounded-lg border border-green-800 bg-green-900/20 p-3">
+                  <CheckCircle2 className="h-5 w-5 shrink-0 text-green-400" />
+                  <div>
+                    <p className="text-sm font-medium text-green-400">업로드 완료</p>
+                    <p className="text-xs text-green-500/80">
+                      {formatNumber(result.summary.totalValid)}건의 코드가 저장되었습니다.
+                    </p>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-3 gap-3">
                   <div className="rounded-lg bg-green-900/20 p-4 text-center">
                     <p className="text-2xl font-bold text-green-400">{formatNumber(result.summary.totalValid)}</p>
@@ -590,6 +647,20 @@ function UploadPageContent() {
                     오류/중복 코드 다운로드
                   </Button>
                 )}
+
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setResult(null);
+                    setCsvFile(null);
+                    setFileName("");
+                    setParsedCodes([]);
+                    setUploadError("");
+                  }}
+                  className="w-full"
+                >
+                  새 업로드
+                </Button>
               </div>
             )}
           </CardContent>

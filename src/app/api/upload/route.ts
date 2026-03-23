@@ -63,6 +63,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  const result = await addCodesMultiItem(groups, collectionId, gameId, adminId, fileName, expiresAt, filePath, initialStatus);
-  return NextResponse.json(result, { status: 201 });
+  try {
+    const result = await addCodesMultiItem(groups, collectionId, gameId, adminId, fileName, expiresAt, filePath, initialStatus);
+    return NextResponse.json(result, { status: 201 });
+  } catch (err) {
+    console.error("[api/upload] error:", err);
+    const message = err instanceof Error ? err.message : "업로드 처리 중 오류가 발생했습니다.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

@@ -12,8 +12,14 @@ export async function POST(req: NextRequest) {
   if (!name || !publisher) {
     return NextResponse.json({ error: "name과 publisher는 필수입니다." }, { status: 400 });
   }
-  const game = await addGame({ name, publisher });
-  return NextResponse.json(game, { status: 201 });
+  try {
+    const game = await addGame({ name, publisher });
+    return NextResponse.json(game, { status: 201 });
+  } catch (err) {
+    console.error("[api/games] POST error:", err);
+    const message = err instanceof Error ? err.message : "게임 생성 중 오류가 발생했습니다.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function PATCH(req: NextRequest) {
