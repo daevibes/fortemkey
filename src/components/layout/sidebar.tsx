@@ -14,6 +14,7 @@ import {
   BookOpen,
   LogOut,
   History,
+  ImageIcon,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { href: "/batches", label: "업로드 이력", icon: History },
   { href: "/codes", label: "코드 관리", icon: Code2 },
   { href: "/inventory", label: "재고 현황", icon: Package },
+  { href: "/assets", label: "게임 에셋", icon: ImageIcon },
   { href: "/settings", label: "관리자", icon: Users },
 ];
 

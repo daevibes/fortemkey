@@ -8,12 +8,12 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, publisher } = body;
+  const { name, publisher, steam_app_id } = body;
   if (!name || !publisher) {
     return NextResponse.json({ error: "name과 publisher는 필수입니다." }, { status: 400 });
   }
   try {
-    const game = await addGame({ name, publisher });
+    const game = await addGame({ name, publisher, ...(steam_app_id != null ? { steam_app_id } : {}) });
     return NextResponse.json(game, { status: 201 });
   } catch (err) {
     console.error("[api/games] POST error:", err);

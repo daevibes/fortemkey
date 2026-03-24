@@ -4,7 +4,22 @@ export interface Game {
   id: number;
   name: string;
   publisher: string;
+  steam_app_id?: number | null;
   created_at: string;
+}
+
+export interface SteamAssets {
+  name: string;
+  header_image: string | null;
+  capsule_image: string | null;
+  capsule_wide: string | null;
+  screenshots: { id: number; thumbnail: string; full: string }[];
+  movies: { id: number; name: string; thumbnail: string; mp4_url: string }[];
+  short_description: string;
+  developers: string[];
+  publishers: string[];
+  genres: string[];
+  release_date: string;
 }
 
 export interface Collection {
